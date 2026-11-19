@@ -38,6 +38,7 @@ SERVICES = [
     {"label": "Bot de Telegram",        "script": "bot.py",         "log": "bot.log"},
     {"label": "Video en vivo (HLS)",    "script": "gateway.py",     "log": "gateway.log"},
     {"label": "Conversión grabaciones", "script": "transcoder.py",  "log": "transcoder.log"},
+    {"label": "Cloud 321 (nevería)",    "script": "xmeye_321.py",   "log": "xmeye_321.log"},
 ]
 
 ACCENT = (98, 184, 58)   # verde Greeniac

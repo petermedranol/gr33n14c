@@ -37,7 +37,10 @@ load_dotenv(os.path.join(HERE, ".env"))
 FFMPEG = os.getenv("FFMPEG", "ffmpeg")
 PI = os.getenv("PI_SSH", "gr33n")                       # ssh alias for the Pi
 CCTV_ROOT = os.getenv("PI_CCTV_ROOT", "/mnt/cctv/greeniac/cctv")
-CAMERAS = [c for c in os.getenv("TRANSCODE_CAMERAS", "garage patiopapas").split() if c]
+CAMERAS = [c for c in os.getenv("TRANSCODE_CAMERAS", "garage patiopapas 321").split() if c]
+# Cloud cameras recorded locally on THIS PC (the connector writes MP4 here) that we
+# push up to the Pi so its normal R2 backup handles them. name -> local folder.
+LOCAL_REC = {"321": os.path.join(HERE, "rec", "321")}
 # Web copies are just for viewing in the browser (download the original for
 # evidence), so a modest width keeps them small. Never upscales (see convert_one).
 WEB_WIDTH = os.getenv("WEB_WIDTH", "1280")
@@ -159,6 +162,33 @@ def cleanup_orphans(cam: str, originals: set[str], web: list[str]) -> None:
         print(f"[{time.strftime('%H:%M:%S')}] {cam}: limpié {len(orphans)} copias web huérfanas", flush=True)
 
 
+def push_local_recordings() -> None:
+    """Push closed MP4 segments recorded locally on the PC (cloud cams like 321) up to
+    the Pi, then delete the local copy. The Pi's cctv_backup then uploads them to R2."""
+    for cam, local_dir in LOCAL_REC.items():
+        if not os.path.isdir(local_dir):
+            continue
+        files = sorted(f for f in os.listdir(local_dir) if _SEG_RE.match(f))
+        for name in files[:-1]:  # skip the newest — still being written
+            src = os.path.join(local_dir, name)
+            try:
+                if time.time() - os.path.getmtime(src) < 30:  # not fully closed yet
+                    continue
+            except OSError:
+                continue
+            rdir = _remote_dir(cam)
+            _ssh(f"mkdir -p {rdir}")
+            tmp = f"{rdir}/.{name}.tmp"
+            if subprocess.run(["scp", src, f"{PI}:{tmp}"], timeout=300,
+                              creationflags=_NOWIN).returncode == 0:
+                _ssh(f"mv {tmp} {rdir}/{name}")
+                try:
+                    os.remove(src)
+                except OSError:
+                    pass
+                print(f"[{time.strftime('%H:%M:%S')}] push {cam}/{name} → Pi", flush=True)
+
+
 def main() -> None:
     guard = singleton.single_instance(47814)  # noqa: F841 — keep alive
     singleton.redirect_log(os.path.join(HERE, "transcoder.log"))
@@ -168,6 +198,8 @@ def main() -> None:
     pool = ThreadPoolExecutor(max_workers=WORKERS)
     while True:
         try:
+            # Push PC-recorded cloud-cam segments (321) up to the Pi for R2 backup.
+            push_local_recordings()
             tasks: list[tuple[str, str]] = []
             cutoff = time.time() - WEB_RETENTION_DAYS * 86400
             for cam in CAMERAS:

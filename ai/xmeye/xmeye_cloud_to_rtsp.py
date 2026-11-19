@@ -303,12 +303,15 @@ class CloudCamera:
 
 class FfmpegBridge:
     def __init__(self, ffmpeg_path, protocol="http", port=DEFAULT_HTTP_PORT, path=DEFAULT_PATH,
-                 push_url=None, max_queue=500):
+                 push_url=None, hls_dir=None, rec_dir=None, rec_prefix="rec", max_queue=500):
         self.ffmpeg_path = ffmpeg_path
         self.protocol = protocol
         self.port = port
         self.path = path
         self.push_url = push_url
+        self.hls_dir = hls_dir
+        self.rec_dir = rec_dir
+        self.rec_prefix = rec_prefix
         self.proc = None
         self._codec = None
         self._fps = None
@@ -338,7 +341,35 @@ class FfmpegBridge:
             "-f", input_fmt, "-i", "pipe:0", "-c", "copy",
         ]
 
-        if self.protocol == "http":
+        if self.protocol == "record":
+            # Record passthrough (-c copy, no decode — works despite the stream's
+            # broken NAL framing) into clock-aligned MP4 segments. The transcoder
+            # pushes closed segments to the Pi, which backs them up to R2.
+            os.makedirs(self.rec_dir, exist_ok=True)
+            url = os.path.join(self.rec_dir, f"{self.rec_prefix}_%Y-%m-%d_%H-%M-%S.mp4")
+            cmd = common + [
+                "-f", "segment", "-segment_time", "600", "-segment_atclocktime", "1",
+                "-reset_timestamps", "1", "-strftime", "1", "-segment_format", "mp4", url,
+            ]
+        elif self.protocol == "hls":
+            # Transcode HEVC->H.264 (NVENC) and write rolling HLS files directly, so
+            # the dashboard/detector/Pi recorder all read files (robust, multi-reader)
+            # instead of fighting over a single-client http -listen socket.
+            url = os.path.join(self.hls_dir, "stream.m3u8")
+            os.makedirs(self.hls_dir, exist_ok=True)
+            cmd = [
+                self.ffmpeg_path, "-loglevel", "warning",
+                "-fflags", "+discardcorrupt+genpts",
+                "-analyzeduration", "10000000", "-probesize", "5000000",
+                "-r", str(fps or 15), "-f", input_fmt, "-i", "pipe:0",
+                "-c:v", "h264_nvenc", "-preset", "p4", "-b:v", "1500k", "-g", "12", "-an",
+                "-f", "hls", "-hls_time", "1", "-hls_list_size", "8",
+                "-hls_flags", "delete_segments+independent_segments+omit_endlist",
+                "-hls_segment_type", "mpegts",
+                "-hls_segment_filename", os.path.join(self.hls_dir, "seg_%05d.ts"),
+                url,
+            ]
+        elif self.protocol == "http":
             url = f"http://127.0.0.1:{self.port}/{self.path}"
             cmd = common + ["-f", "mpegts", "-listen", "1", url]
         elif self.protocol == "rtsp":
@@ -352,6 +383,7 @@ class FfmpegBridge:
         self.proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
             text=False, bufsize=0,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self._last_write_at = time.monotonic()
         self._codec = codec
@@ -505,7 +537,13 @@ def main():
     ap.add_argument("--password", default=None)
     ap.add_argument("--channel", type=int, default=CHANNEL)
     ap.add_argument("--stream", type=int, default=DEFAULT_STREAM, help="0=main, 1=sub")
-    ap.add_argument("--protocol", choices=["http", "rtsp", "push"], default="http",
+    ap.add_argument("--hls-dir", default=None,
+                     help="For --protocol hls: folder to write stream.m3u8 + segments into "
+                          "(transcoded to H.264 with NVENC). Read by the dashboard/detector/recorder.")
+    ap.add_argument("--rec-dir", default=None,
+                     help="For --protocol record: folder to write MP4 segments into "
+                          "(-c copy passthrough; segments named <camera>_<timestamp>.mp4).")
+    ap.add_argument("--protocol", choices=["http", "rtsp", "push", "hls", "record"], default="http",
                      help="http/rtsp: this script listens itself (single stream, own port). "
                           "push: connect out to an already-running RTSP server (e.g. MediaMTX) "
                           "instead -- needed to put multiple streams on one shared port, or for "
@@ -544,7 +582,8 @@ def main():
 
     try:
         v = subprocess.run([os.path.join(args.vms_dir, "ffmpeg.exe"), "-version"],
-                            capture_output=True, text=True, timeout=5)
+                            capture_output=True, text=True, timeout=5,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         log("[i] " + (v.stdout.splitlines()[0] if v.stdout else "(no version output)"))
     except Exception as e:
         log(f"[!] Could not check ffmpeg -version: {e}")
@@ -582,13 +621,27 @@ def main():
     port = args.port or (DEFAULT_RTSP_PORT if args.protocol == "rtsp" else DEFAULT_HTTP_PORT)
     push_url = args.push_url or f"rtsp://127.0.0.1:{DEFAULT_RTSP_PORT}/{args.camera or 'cam'}_{stream_label}"
     bridge = FfmpegBridge(os.path.join(args.vms_dir, "ffmpeg.exe"),
-                          protocol=args.protocol, port=port, path=args.path, push_url=push_url)
+                          protocol=args.protocol, port=port, path=args.path, push_url=push_url,
+                          hls_dir=args.hls_dir, rec_dir=args.rec_dir, rec_prefix=(args.camera or "rec"))
     last_frame_at = time.monotonic()
+
+    hdr_state = {"vpsppssps": b""}
 
     def on_frame(frame):
         nonlocal last_frame_at
-        if frame.nPacketType in VIDEO_PACKET_TYPES and frame.dwPacketSize:
-            buf = strip_private_markers(to_annexb(string_at(frame.pPacketBuffer, frame.dwPacketSize)))
+        if not frame.dwPacketSize:
+            return
+        buf = strip_private_markers(to_annexb(string_at(frame.pPacketBuffer, frame.dwPacketSize)))
+        # FILE_HEAD packets carry the parameter sets (VPS/SPS/PPS). The old code
+        # dropped them, so a decoder (needed to transcode to H.264 for the browser /
+        # to run detection) hit "PPS id out of range" and produced nothing. Remember
+        # them and prepend to each keyframe so the stream is self-contained.
+        if frame.nPacketType == FILE_HEAD:
+            hdr_state["vpsppssps"] = buf
+            return
+        if frame.nPacketType in VIDEO_PACKET_TYPES:
+            if frame.nPacketType == VIDEO_I_FRAME and hdr_state["vpsppssps"]:
+                buf = hdr_state["vpsppssps"] + buf
             bridge.write(frame.nEncodeType, buf, fps=frame.dwFrameRate)
             stats["frames"] += 1
             stats["bytes"] += len(buf)
@@ -627,7 +680,9 @@ def main():
                     bridge.close()
                     bridge = FfmpegBridge(os.path.join(args.vms_dir, "ffmpeg.exe"),
                                           protocol=args.protocol, port=port,
-                                          path=args.path, push_url=push_url)
+                                          path=args.path, push_url=push_url,
+                                          hls_dir=args.hls_dir, rec_dir=args.rec_dir,
+                                          rec_prefix=(args.camera or "rec"))
                     cam.stop()
                     cam.init(skip_p2p=args.skip_p2p)
                     cam.login(cloud_id, user, password, skip_p2p=args.skip_p2p)

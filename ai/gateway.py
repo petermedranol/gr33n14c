@@ -163,6 +163,17 @@ def main() -> None:
         print(f"  {cam['name']}: {cam['width']}px {cam['bitrate']} → {hls_dir}", flush=True)
         threading.Thread(target=run_ffmpeg_forever, args=(cam, hls_dir), daemon=True).start()
 
+    # Serve-only cameras: their HLS folder is filled by another process (e.g. the
+    # xmeye_321 cloud connector writes H.264 HLS directly). We just serve the files.
+    for name in os.getenv("GATEWAY_SERVE_CAMERAS", "").split(","):
+        name = name.strip()
+        if not name:
+            continue
+        hls_dir = os.path.join(HERE, "live", name)
+        os.makedirs(hls_dir, exist_ok=True)
+        _HLS_DIRS[name] = hls_dir
+        print(f"  {name}: (serve-only, llenado por otro proceso) → {hls_dir}", flush=True)
+
     server = ThreadingHTTPServer(("0.0.0.0", PORT), HlsHandler)
     print(f"Sirviendo HLS multi-cámara en http://0.0.0.0:{PORT}/<cámara>/stream.m3u8  (puerto {PORT})", flush=True)
     server.serve_forever()

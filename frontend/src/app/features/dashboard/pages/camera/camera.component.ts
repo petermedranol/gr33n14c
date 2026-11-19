@@ -55,11 +55,14 @@ interface BarkEvent {
 
 // ─── Camera selector type ────────────────────────────────────────────────────
 
-type CameraId = 'greenhouse' | 'garage' | 'patiopapas' | 'eventos' | 'ladridos';
+type CameraId = 'greenhouse' | 'garage' | 'patiopapas' | '321' | 'eventos' | 'ladridos';
 
-// IP cameras share the same UI (live HLS + recordings + detection events).
+// IP cameras share the same UI (recordings + detection events + live).
 // PTZ and bark detection are Garage-only.
-const IP_CAMERAS: CameraId[] = ['garage', 'patiopapas'];
+const IP_CAMERAS: CameraId[] = ['garage', 'patiopapas', '321'];
+// Cameras with a working live feed. 321 (Nevería) is a cloud cam whose stream only
+// passes through (can't be decoded for live), so it's recordings-only.
+const LIVE_CAMERAS: CameraId[] = ['garage', 'patiopapas'];
 
 interface CameraTab {
   id: CameraId;
@@ -88,6 +91,7 @@ export class CameraComponent implements OnInit, AfterViewInit, OnDestroy {
     { id: 'greenhouse', label: 'Invernadero', icon: 'leaf' },
     { id: 'garage',     label: 'Garage',      icon: 'warehouse' },
     { id: 'patiopapas', label: 'Patio Papás', icon: 'house' },
+    { id: '321',        label: 'Nevería',     icon: 'cloud' },
     { id: 'eventos',    label: 'Eventos',     icon: 'images' },
     { id: 'ladridos',   label: 'Ladridos',    icon: 'audio-lines' },
   ];
@@ -107,16 +111,21 @@ export class CameraComponent implements OnInit, AfterViewInit, OnDestroy {
   // Garage live <video> element (conditionally rendered) + its hls.js player.
   private hls: Hls | null = null;
   @ViewChild('garageVideo') set garageVideo(ref: ElementRef<HTMLVideoElement> | undefined) {
-    if (ref && this.isIpCam(this.activeCamera()) && !this.selectedRecording()) {
+    if (ref && this.hasLive(this.activeCamera()) && !this.selectedRecording()) {
       this.attachHls(ref.nativeElement);
     } else {
       this.detachHls();
     }
   }
 
-  /** Is this an IP camera (garage/patiopapas) — i.e. the live+recordings+events UI? */
+  /** Is this an IP camera (garage/patiopapas/321) — i.e. the recordings+events UI? */
   isIpCam(id: string): boolean {
     return (IP_CAMERAS as string[]).includes(id);
+  }
+
+  /** Does this camera have a working live feed? (321/Nevería is recordings-only.) */
+  hasLive(id: string): boolean {
+    return (LIVE_CAMERAS as string[]).includes(id);
   }
 
   // ─── Recordings panel (Garage only) ───────────────────────────────────────
@@ -179,7 +188,7 @@ export class CameraComponent implements OnInit, AfterViewInit, OnDestroy {
       // The HLS player attaches once the <video> renders (see garageVideo setter).
       this.selectedRecording.set(null);  // don't carry a recording across cameras
       this.videoError.set(false);
-      this.garageLoading.set(true);
+      this.garageLoading.set(this.hasLive(id));  // spinner only while a live feed loads
       this.loadDays();
       this.loadEvents();          // to flag which recordings had a detection
       this.loadBarkEvents();      // bark markers on the seek bar (both IP cameras)

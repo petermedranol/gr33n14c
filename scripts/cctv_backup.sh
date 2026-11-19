@@ -15,9 +15,12 @@ set -euo pipefail
 CCTV_ROOT="${CCTV_ROOT:-/mnt/cctv/greeniac/cctv}"
 BUCKET="r2:greeniac-cctv"
 # Cameras to back up off-site. Each gets its own folder in the bucket.
-CAMERAS="${CCTV_BACKUP_CAMERAS:-garage patiopapas}"
-# Off-site window (applies to every camera). 5 days keeps R2 ~79 GB (~$1.18/mo).
+CAMERAS="${CCTV_BACKUP_CAMERAS:-garage patiopapas 321}"
+# Off-site window (default for every camera). Override per camera with
+# R2_RETENTION_<CAM>. garage+patiopapas 5d ≈ 79 GB; 321 (cloud, ~1 Mbps, recorded on
+# the PC and pushed here) kept 3d ≈ 33 GB → total ≈ 112 GB (~$1.7/mo, under ~$2).
 R2_RETENTION="${R2_RETENTION:-5d}"
+R2_RETENTION_321="${R2_RETENTION_321:-3d}"
 # Local retention (keeps the USB bounded; R2 still holds the last R2_RETENTION off-site).
 LOCAL_RETENTION_DAYS="${LOCAL_RETENTION_DAYS:-30}"   # originals kept locally (1 mes por cámara)
 WEB_RETENTION_DAYS="${WEB_RETENTION_DAYS:-7}"        # browser-playable copies kept
@@ -50,9 +53,11 @@ for cam in $CAMERAS; do
     --retries 3 \
     --log-level INFO
 
-  # 2) Prune remote objects older than the retention window.
+  # 2) Prune remote objects older than this camera's retention window.
+  cam_ret_var="R2_RETENTION_$(echo "$cam" | tr '[:lower:]' '[:upper:]')"
+  cam_ret="${!cam_ret_var:-$R2_RETENTION}"
   rclone delete "$remote" \
-    --min-age "$R2_RETENTION" \
+    --min-age "$cam_ret" \
     --retries 3 \
     --log-level INFO
 

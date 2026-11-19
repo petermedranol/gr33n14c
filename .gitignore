@@ -48,6 +48,10 @@ ai/.disabled/
 ai/events/
 ai/live/
 ai/work/
+ai/rec/
+# Recordings / video segments are never source — never commit footage.
+*.mp4
+*.ts
 # Stray camera snapshots / test captures (private footage).
 _cloud321.jpg
 *_snap.jpg

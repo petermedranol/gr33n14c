@@ -53,6 +53,10 @@ _EVENTS_LOG = "events.jsonl"
 CAMERAS: dict[str, dict] = {
     "garage": {"name": "Garage", "rtsp": settings.GARAGE_RTSP_URL},
     "patiopapas": {"name": "Patio Papás", "rtsp": settings.PATIOPAPAS_RTSP_URL},
+    # Nevería 321: cloud camera, recorded on the PC and pushed here. No live RTSP
+    # (its cloud stream only passes through, can't be decoded for live) — recordings
+    # only. The dashboard tab shows them (download + browser playback via web copies).
+    "321": {"name": "Nevería", "rtsp": ""},
 }
 
 # Segment filenames look like: garage_2026-11-17_15-30-00.mp4

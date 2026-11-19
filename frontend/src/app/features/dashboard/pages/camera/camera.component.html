@@ -253,7 +253,7 @@
               }
             </aside>
           </div>
-        } @else {
+        } @else if (hasLive(activeCamera())) {
           <div class="camera-container stage-fill">
             @if (garageLoading()) {
               <div class="camera-placeholder">
@@ -357,6 +357,13 @@
             </div>
           </div>
           }
+        } @else {
+          <div class="camera-container stage-fill">
+            <div class="camera-placeholder">
+              <lucide-icon name="cloud" [size]="40"></lucide-icon>
+              <span>Cámara en la nube — selecciona una grabación de la lista para verla.</span>
+            </div>
+          </div>
         }
       </section>
 
