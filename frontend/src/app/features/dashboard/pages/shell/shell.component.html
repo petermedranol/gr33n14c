@@ -1,0 +1,200 @@
+<div class="shell-layout" [class.sidebar-collapsed]="isCollapsed" [class.sidebar-mobile-open]="isMobileOpen">
+
+  <!-- Mobile overlay backdrop -->
+  @if (isMobileOpen) {
+    <div class="sidebar-backdrop" (click)="toggleSidebar()"></div>
+  }
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar" [class.collapsed]="isCollapsed" [class.mobile-open]="isMobileOpen">
+
+    <!-- ── Logo zone ── -->
+    <div class="sidebar-logo">
+      @if (isCollapsed) {
+        <!-- Collapsed: icon-only logo -->
+        <img src="/logo-greeniac-sin-texto.png" alt="Greeniac" class="logo-icon" />
+      } @else {
+        <!-- Expanded: full logo with text -->
+        <img src="/logo-greeniac.png" alt="Greeniac" class="logo-full" />
+      }
+    </div>
+
+    <!-- ── Navigation ── -->
+    <nav class="sidebar-nav">
+      @for (item of menuItems; track item.id) {
+        <div
+          class="nav-group"
+          (mouseenter)="isCollapsed && item.children.length ? showFlyout(item.id) : null"
+          (mouseleave)="isCollapsed && item.children.length ? scheduleHideFlyout() : null"
+        >
+
+          @if (item.children && item.children.length > 0) {
+            <!-- Parent item: expandable in expanded mode, flyout in collapsed -->
+            <button
+              class="nav-card nav-parent"
+              [class.expanded]="isExpanded(item.id)"
+              [class.collapsed-mode]="isCollapsed"
+              (click)="isCollapsed ? null : toggleExpand(item.id)"
+              [attr.title]="isCollapsed ? item.label : null"
+            >
+              @if (item.icon) {
+                <lucide-icon class="nav-icon" [name]="item.icon" [size]="18"></lucide-icon>
+              }
+              @if (!isCollapsed) {
+                <span class="nav-label">{{ item.label }}</span>
+                <lucide-icon
+                  class="nav-chevron"
+                  [name]="isExpanded(item.id) ? 'chevron-down' : 'chevron-right'"
+                  [size]="14"
+                ></lucide-icon>
+              }
+            </button>
+
+            <!-- Tooltip (collapsed + no children interaction) — shown by CSS :hover on nav-card when collapsed -->
+
+            <!-- Expanded children -->
+            @if (!isCollapsed && isExpanded(item.id)) {
+              <div class="nav-children">
+                @for (child of item.children; track child.id) {
+                  <a
+                    class="nav-card nav-child"
+                    [routerLink]="child.route"
+                    routerLinkActive="active"
+                  >
+                    @if (child.icon) {
+                      <lucide-icon class="nav-icon" [name]="child.icon" [size]="16"></lucide-icon>
+                    }
+                    <span class="nav-label">{{ child.label }}</span>
+                  </a>
+                }
+              </div>
+            }
+
+            <!-- Flyout (collapsed mode hover) -->
+            @if (isCollapsed && isFlyoutActive(item.id)) {
+              <div
+                class="nav-flyout"
+                (mouseenter)="showFlyout(item.id)"
+                (mouseleave)="scheduleHideFlyout()"
+              >
+                <div class="flyout-header">{{ item.label }}</div>
+                @for (child of item.children; track child.id) {
+                  <a
+                    class="flyout-item"
+                    [routerLink]="child.route"
+                    routerLinkActive="active"
+                    (click)="hideFlyout()"
+                  >
+                    @if (child.icon) {
+                      <lucide-icon [name]="child.icon" [size]="16"></lucide-icon>
+                    }
+                    <span>{{ child.label }}</span>
+                  </a>
+                }
+              </div>
+            }
+
+          } @else {
+            <!-- Leaf item: direct link -->
+            <a
+              class="nav-card nav-leaf"
+              [routerLink]="item.route"
+              routerLinkActive="active"
+              [class.collapsed-mode]="isCollapsed"
+              [attr.title]="isCollapsed ? item.label : null"
+            >
+              @if (item.icon) {
+                <lucide-icon class="nav-icon" [name]="item.icon" [size]="18"></lucide-icon>
+              }
+              @if (!isCollapsed) {
+                <span class="nav-label">{{ item.label }}</span>
+              }
+            </a>
+          }
+
+        </div>
+      }
+
+      @if (menuItems.length === 0) {
+        <a
+          class="nav-card nav-leaf"
+          routerLink="/app/home"
+          routerLinkActive="active"
+          [class.collapsed-mode]="isCollapsed"
+          [attr.title]="isCollapsed ? 'Inicio' : null"
+        >
+          <lucide-icon class="nav-icon" name="house" [size]="18"></lucide-icon>
+          @if (!isCollapsed) {
+            <span class="nav-label">Inicio</span>
+          }
+        </a>
+      }
+    </nav>
+
+    <!-- ── Sidebar footer: logout ── -->
+    <div class="sidebar-footer">
+      <button
+        class="nav-card nav-logout"
+        [class.collapsed-mode]="isCollapsed"
+        [attr.title]="isCollapsed ? 'Cerrar sesión' : null"
+        (click)="logout()"
+      >
+        <lucide-icon class="nav-icon" name="log-out" [size]="18"></lucide-icon>
+        @if (!isCollapsed) {
+          <span class="nav-label">Cerrar sesión</span>
+        }
+      </button>
+    </div>
+  </aside>
+
+  <!-- Round toggle button, floating on the sidebar/header seam -->
+  <button
+    class="sidebar-toggle-btn"
+    (click)="toggleCollapse()"
+    [title]="isCollapsed ? 'Expandir menú' : 'Colapsar menú'"
+  >
+    <lucide-icon [name]="isCollapsed ? 'chevron-right' : 'chevron-left'" [size]="15"></lucide-icon>
+  </button>
+
+  <!-- ═══ TOP BAR ═══ -->
+  <header class="topbar">
+    <!-- Hamburger: mobile = overlay toggle, desktop = collapse toggle -->
+    <button class="sidebar-toggle" (click)="toggleSidebar()" title="Alternar menú">
+      <span class="hamburger"></span>
+    </button>
+
+    <!-- Título/subtítulo del módulo actual -->
+    @if (header.title()) {
+      <div class="topbar-title">
+        <span class="pt-title">
+          @if (header.icon()) {
+            <lucide-icon [name]="header.icon()" [size]="18"></lucide-icon>
+          }
+          {{ header.title() }}
+        </span>
+        @if (header.subtitle()) {
+          <span class="pt-subtitle">{{ header.subtitle() }}</span>
+        }
+      </div>
+    }
+
+    <!-- Botones de acción del módulo -->
+    @if (header.actions()) {
+      <div class="topbar-actions">
+        <ng-container [ngTemplateOutlet]="header.actions()!" />
+      </div>
+    }
+
+    <div class="topbar-right">
+      @if (user) {
+        <app-user-avatar [userId]="user.id" [name]="user.name" [size]="32" />
+        <span class="user-name">{{ user.name }}</span>
+      }
+    </div>
+  </header>
+
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <main class="main-content">
+    <router-outlet />
+  </main>
+</div>

@@ -1,0 +1,18 @@
+[Unit]
+Description=Greeniac CCTV recorder - garage
+# Only record once the network is up and the USB disk is mounted.
+After=network-online.target mnt-cctv.mount
+Wants=network-online.target
+Requires=mnt-cctv.mount
+
+[Service]
+Type=simple
+User=peter
+Group=peter
+EnvironmentFile=/etc/greeniac/cctv.env
+ExecStart=/home/peter/Gr33n14c/scripts/cctv_record.sh garage
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

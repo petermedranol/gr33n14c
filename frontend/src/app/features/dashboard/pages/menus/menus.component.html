@@ -1,0 +1,234 @@
+<div class="menus-page">
+  <!-- Toolbar -->
+  <div class="page-toolbar">
+    <button class="btn btn-primary" (click)="openCreate()"><lucide-icon name="plus" [size]="16"></lucide-icon> Nuevo menú</button>
+  </div>
+
+  <!-- Error banner -->
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  <!-- Loading -->
+  @if (loading()) {
+    <div class="loading-row">
+      <span class="loading-dot"></span>
+      <span class="loading-dot"></span>
+      <span class="loading-dot"></span>
+      <span class="loading-text">Cargando menús…</span>
+    </div>
+  }
+
+  <!-- Table -->
+  @if (!loading()) {
+    <div class="table-wrapper">
+      <table class="menus-table">
+        <thead>
+          <tr>
+            <th>Etiqueta</th>
+            <th>Ruta</th>
+            <th>Libre</th>
+            <th>Req. nivel</th>
+            <th>Activo</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of menuRows(); track row.menu.id) {
+            <tr [class.row-child]="row.indent === 1">
+              <td>
+                <span class="label-cell" [class.label-child]="row.indent === 1">
+                  @if (row.indent === 1) {
+                    <span class="indent-arrow">↳</span>
+                  }
+                  @if (row.menu.icon) {
+                    <span class="menu-icon">{{ row.menu.icon }}</span>
+                  }
+                  {{ row.menu.label }}
+                </span>
+              </td>
+              <td class="route-cell">{{ row.menu.route ?? '—' }}</td>
+              <td>
+                @if (row.menu.is_free) {
+                  <span class="badge badge-free">Sí</span>
+                } @else {
+                  <span class="badge badge-nofree">No</span>
+                }
+              </td>
+              <td>
+                @if (row.menu.has_access_levels) {
+                  <span class="badge badge-active">Sí</span>
+                } @else {
+                  <span class="badge badge-nofree">No</span>
+                }
+              </td>
+              <td>
+                @if (row.menu.is_active) {
+                  <span class="badge badge-active">Activo</span>
+                } @else {
+                  <span class="badge badge-inactive">Inactivo</span>
+                }
+              </td>
+              <td class="actions-cell">
+                <button class="btn btn-sm btn-secondary" (click)="openEdit(row.menu)"><lucide-icon name="pencil" [size]="14"></lucide-icon> Editar</button>
+                <button class="btn btn-sm btn-danger" (click)="confirmDelete(row.menu)"><lucide-icon name="trash-2" [size]="14"></lucide-icon> Eliminar</button>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="6" class="empty-row">No hay menús configurados.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
+
+<!-- ── Create / Edit modal ── -->
+@if (modalOpen()) {
+  <div class="modal-backdrop" (click)="closeModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ editingMenu() ? 'Editar menú' : 'Nuevo menú' }}</h3>
+        <button class="modal-close" (click)="closeModal()" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <form class="modal-form" (ngSubmit)="submitForm()" [formGroup]="form" novalidate>
+
+        <!-- Parent -->
+        <div class="form-group">
+          <label for="padre">Padre</label>
+          <select id="padre" formControlName="parent_id">
+            <option [ngValue]="null">— Ninguno (menú raíz) —</option>
+            @for (m of parentOptions(); track m.id) {
+              <option [ngValue]="m.id">{{ m.label }}</option>
+            }
+          </select>
+        </div>
+
+        <!-- Label -->
+        <div class="form-group">
+          <label for="etiqueta">Etiqueta</label>
+          <input
+            id="etiqueta"
+            type="text"
+            formControlName="label"
+            placeholder="Nombre visible del menú"
+            autocomplete="off"
+            [class.input-error]="isInvalid('label')"
+          />
+          @if (isInvalid('label')) {
+            <span class="field-error">La etiqueta es obligatoria.</span>
+          }
+        </div>
+
+        <!-- Icon -->
+        <div class="form-group">
+          <label for="icono">
+            Icono
+            <span class="label-hint">(texto / emoji, opcional)</span>
+          </label>
+          <input
+            id="icono"
+            type="text"
+            formControlName="icon"
+            placeholder="p.ej. 🏠 o home"
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- Route -->
+        <div class="form-group">
+          <label for="ruta">
+            Ruta
+            <span class="label-hint">(opcional)</span>
+          </label>
+          <input
+            id="ruta"
+            type="text"
+            formControlName="route"
+            placeholder="/app/ejemplo"
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- Description -->
+        <div class="form-group">
+          <label for="descripcion">
+            Descripción
+            <span class="label-hint">(opcional)</span>
+          </label>
+          <input
+            id="descripcion"
+            type="text"
+            formControlName="description"
+            placeholder="Descripción breve del menú"
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- Order -->
+        <div class="form-group">
+          <label for="orden">Orden</label>
+          <input
+            id="orden"
+            type="number"
+            formControlName="order"
+            placeholder="0"
+            min="0"
+            [class.input-error]="isInvalid('order')"
+          />
+          @if (isInvalid('order')) {
+            <span class="field-error">El orden debe ser un número mayor o igual a 0.</span>
+          }
+        </div>
+
+        <!-- is_free toggle -->
+        <div class="form-group form-group-inline">
+          <label class="toggle-label">
+            <input type="checkbox" formControlName="is_free" class="toggle-input" />
+            <span class="toggle-track">
+              <span class="toggle-thumb"></span>
+            </span>
+            <span class="toggle-text">{{ isFreeValue ? 'Libre (todos los usuarios)' : 'Restringido' }}</span>
+          </label>
+        </div>
+
+        <!-- has_access_levels toggle -->
+        <div class="form-group form-group-inline">
+          <label class="toggle-label">
+            <input type="checkbox" formControlName="has_access_levels" class="toggle-input" />
+            <span class="toggle-track">
+              <span class="toggle-thumb"></span>
+            </span>
+            <span class="toggle-text">{{ hasAccessLevelsValue ? 'Requiere nivel de acceso' : 'Sin niveles de acceso' }}</span>
+          </label>
+        </div>
+
+        <!-- is_active toggle -->
+        <div class="form-group form-group-inline">
+          <label class="toggle-label">
+            <input type="checkbox" formControlName="is_active" class="toggle-input" />
+            <span class="toggle-track">
+              <span class="toggle-thumb"></span>
+            </span>
+            <span class="toggle-text">{{ form.value.is_active ? 'Activo' : 'Inactivo' }}</span>
+          </label>
+        </div>
+
+        <!-- Form-level error -->
+        @if (formError()) {
+          <div class="alert alert-danger">{{ formError() }}</div>
+        }
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" (click)="closeModal()" [disabled]="saving()"><lucide-icon name="x" [size]="15"></lucide-icon> Cancelar</button>
+          <button type="submit" class="btn btn-primary" [disabled]="saving()">
+            @if (saving()) { Guardando… } @else { <lucide-icon name="save" [size]="15"></lucide-icon> Guardar }
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}

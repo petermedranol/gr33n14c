@@ -1,0 +1,361 @@
+<div class="acc-page">
+
+  <!-- ── Top card: user search ── -->
+  <div class="acc-card acc-card--search">
+    <h2 class="acc-card-title">
+      <span class="acc-card-icon" aria-hidden="true">👤</span>
+      Buscar Usuario
+    </h2>
+    <app-user-autocomplete
+      [searchFunction]="searchFn"
+      placeholder="Buscar por nombre o correo…"
+      (userSelected)="onUserSelected($event)"
+      (userCleared)="onUserCleared()"
+    ></app-user-autocomplete>
+
+    @if (selectedUser) {
+      <div class="acc-user-info">
+        <div class="acc-user-avatar" aria-hidden="true">
+          {{ selectedUser.name.charAt(0).toUpperCase() }}
+        </div>
+        <div class="acc-user-details">
+          <span class="acc-user-name">{{ selectedUser.name }}</span>
+          <span class="acc-user-email">{{ selectedUser.email }}</span>
+        </div>
+        <div class="acc-user-actions">
+          <button
+            class="acc-action-btn acc-action-btn--preset"
+            type="button"
+            (click)="openPresetModal()"
+            [disabled]="presetsLoading"
+            title="Aplicar un perfil predefinido de accesos"
+          >
+            <lucide-icon name="check" [size]="14"></lucide-icon> Aplicar perfil
+          </button>
+          <button
+            class="acc-action-btn acc-action-btn--clone"
+            type="button"
+            (click)="openCloneModal()"
+            title="Copiar accesos de otro usuario"
+          >
+            <lucide-icon name="users" [size]="14"></lucide-icon> Clonar perfil
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- ── Empty state ── -->
+  @if (!selectedUser) {
+    <div class="acc-empty">
+      <div class="acc-empty-icon" aria-hidden="true">🔑</div>
+      <h3 class="acc-empty-title">Selecciona un usuario para gestionar sus accesos</h3>
+      <p class="acc-empty-sub">Busca por nombre o correo en el campo superior.</p>
+    </div>
+  }
+
+  <!-- ── Permissions card ── -->
+  @if (selectedUser) {
+    <div class="acc-card acc-card--perms">
+
+      <!-- Sticky toolbar -->
+      <div class="acc-toolbar">
+        <span class="acc-section-title">Permisos de Acceso</span>
+
+        <!-- Menu text search -->
+        <div class="acc-search-wrap">
+          <input
+            type="text"
+            class="acc-search-input"
+            [(ngModel)]="menuSearch"
+            placeholder="Buscar menú por nombre, descripción o ruta…"
+            autocomplete="off"
+          />
+          @if (menuSearch) {
+            <button class="acc-search-clear" type="button" (click)="menuSearch = ''" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">&#10005;</button>
+          }
+        </div>
+
+        <!-- Status filter -->
+        <div class="acc-filter-group" role="group" aria-label="Filtrar por estado">
+          <button
+            class="acc-filter-btn"
+            [class.acc-filter-btn--active]="statusFilter === 'all'"
+            type="button"
+            (click)="statusFilter = 'all'"
+          >Todos</button>
+          <button
+            class="acc-filter-btn"
+            [class.acc-filter-btn--active]="statusFilter === 'with'"
+            type="button"
+            (click)="statusFilter = 'with'"
+          >Con acceso</button>
+          <button
+            class="acc-filter-btn"
+            [class.acc-filter-btn--active]="statusFilter === 'without'"
+            type="button"
+            (click)="statusFilter = 'without'"
+          >Sin acceso</button>
+        </div>
+
+        <!-- Collapse / expand -->
+        <div class="acc-collapse-group">
+          <button
+            class="acc-icon-btn"
+            type="button"
+            (click)="collapseAll()"
+            [disabled]="isFiltering"
+            title="Contraer todo"
+            aria-label="Contraer todo"
+          >&#9650;&#9650;</button>
+          <button
+            class="acc-icon-btn"
+            type="button"
+            (click)="expandAll()"
+            [disabled]="isFiltering"
+            title="Expandir todo"
+            aria-label="Expandir todo"
+          >&#9660;&#9660;</button>
+        </div>
+
+        <!-- Save button -->
+        <button
+          class="acc-save-btn"
+          type="button"
+          (click)="saveAccesses()"
+          [disabled]="saving || !hasChanges()"
+        >
+          @if (saving) {
+            <span class="acc-spinner" aria-hidden="true"></span>
+            Guardando…
+          } @else if (hasChanges()) {
+            <lucide-icon name="save" [size]="15"></lucide-icon> Guardar Cambios ({{ pendingChangesCount() }})
+          } @else {
+            Sin Cambios
+          }
+        </button>
+      </div>
+
+      <!-- Filter info bar -->
+      @if (isFiltering) {
+        <div class="acc-filter-info">
+          <span>{{ countMatches() }} coincidencia(s) — los menús padre se muestran para permitir otorgar acceso</span>
+          <button type="button" class="acc-link-btn" (click)="clearFilters()">Limpiar filtros</button>
+        </div>
+      }
+
+      <!-- Feedback banners -->
+      @if (saveSuccess) {
+        <div class="acc-alert acc-alert--success">{{ saveSuccess }}</div>
+      }
+      @if (saveError) {
+        <div class="acc-alert acc-alert--danger">{{ saveError }}</div>
+      }
+
+      <!-- Loading accesses -->
+      @if (accessesLoading) {
+        <div class="acc-loading-row">
+          <span class="acc-dot"></span><span class="acc-dot"></span><span class="acc-dot"></span>
+          <span class="acc-loading-text">Cargando accesos…</span>
+        </div>
+      }
+
+      <!-- Menu tree -->
+      @if (!accessesLoading) {
+        <div class="acc-tree">
+          @let visibleTree = getVisibleTree();
+
+          @if (menus.length === 0 && !menusLoading) {
+            <div class="acc-empty-tree">No hay menús configurados en el sistema.</div>
+          } @else if (visibleTree.length === 0) {
+            <div class="acc-empty-tree">Ningún menú coincide con la búsqueda.</div>
+          }
+
+          @for (node of visibleTree; track node.id) {
+            <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: node }"></ng-container>
+          }
+        </div>
+      }
+    </div>
+  }
+
+</div>
+
+<!-- ── Apply-preset modal ── -->
+@if (showPresetModal) {
+  <div class="acc-modal-backdrop" (click)="closePresetModal()">
+    <div class="acc-modal" role="dialog" aria-modal="true" aria-label="Aplicar perfil" (click)="$event.stopPropagation()">
+      <div class="acc-modal-header">
+        <span class="acc-modal-title">Aplicar perfil predefinido</span>
+        <button class="acc-modal-close" type="button" (click)="closePresetModal()" aria-label="Cerrar">&#10005;</button>
+      </div>
+      <div class="acc-modal-body">
+        <p class="acc-modal-note">
+          Selecciona un perfil para <strong>{{ selectedUser?.name }}</strong>.<br>
+          Los accesos se reemplazarán en pantalla. Nada se guarda hasta pulsar <em>Guardar Cambios</em>.
+        </p>
+
+        @if (presets.length === 0) {
+          <p class="acc-modal-empty">No hay perfiles predefinidos disponibles.</p>
+        } @else {
+          <div class="acc-preset-list">
+            @for (preset of presets; track preset.id) {
+              <label
+                class="acc-preset-item"
+                [class.acc-preset-item--selected]="selectedPresetId === preset.id"
+              >
+                <input
+                  type="radio"
+                  name="acc-preset-radio"
+                  class="acc-preset-radio"
+                  [value]="preset.id"
+                  [(ngModel)]="selectedPresetId"
+                />
+                <div class="acc-preset-info">
+                  <span class="acc-preset-name">{{ preset.name }}</span>
+                  <span class="acc-preset-meta">{{ preset.menus.length }} acceso(s)</span>
+                  @if (preset.description) {
+                    <span class="acc-preset-desc">{{ preset.description }}</span>
+                  }
+                </div>
+              </label>
+            }
+          </div>
+        }
+      </div>
+      <div class="acc-modal-footer">
+        <button class="acc-modal-btn acc-modal-btn--cancel" type="button" (click)="closePresetModal()"><lucide-icon name="x" [size]="15"></lucide-icon> Cancelar</button>
+        <button
+          class="acc-modal-btn acc-modal-btn--confirm"
+          type="button"
+          [disabled]="selectedPresetId === null"
+          (click)="confirmApplyPreset()"
+        ><lucide-icon name="check" [size]="15"></lucide-icon> Aplicar perfil</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ── Clone-profile modal ── -->
+@if (showCloneModal) {
+  <div class="acc-modal-backdrop" (click)="closeCloneModal()">
+    <div class="acc-modal" role="dialog" aria-modal="true" aria-label="Clonar perfil" (click)="$event.stopPropagation()">
+      <div class="acc-modal-header">
+        <span class="acc-modal-title">Clonar perfil de usuario</span>
+        <button class="acc-modal-close" type="button" (click)="closeCloneModal()" aria-label="Cerrar">&#10005;</button>
+      </div>
+      <div class="acc-modal-body">
+        <p class="acc-modal-note">
+          Busca el usuario <strong>de origen</strong> para copiar sus accesos a <strong>{{ selectedUser?.name }}</strong>.<br>
+          Nada se guarda hasta pulsar <em>Guardar Cambios</em>.
+        </p>
+        <app-user-autocomplete
+          [searchFunction]="cloneSearchFn"
+          placeholder="Buscar usuario de origen…"
+          (userSelected)="onCloneSourceSelected($event)"
+          (userCleared)="onCloneSourceCleared()"
+        ></app-user-autocomplete>
+        @if (cloneSourceUser && cloneSourceUser.id === selectedUser?.id) {
+          <p class="acc-modal-warn">No puedes clonar el perfil sobre el mismo usuario.</p>
+        }
+      </div>
+      <div class="acc-modal-footer">
+        <button class="acc-modal-btn acc-modal-btn--cancel" type="button" (click)="closeCloneModal()"><lucide-icon name="x" [size]="15"></lucide-icon> Cancelar</button>
+        <button
+          class="acc-modal-btn acc-modal-btn--confirm"
+          type="button"
+          [disabled]="!cloneSourceUser || cloneSourceUser.id === selectedUser?.id || cloningProfile"
+          (click)="confirmCloneProfile()"
+        >
+          @if (cloningProfile) {
+            <span class="acc-spinner" aria-hidden="true"></span> Cargando…
+          } @else {
+            <lucide-icon name="users" [size]="15"></lucide-icon> Clonar accesos
+          }
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ── Recursive tree node template ── -->
+<ng-template #treeNode let-node>
+  <div
+    class="acc-node"
+    [class.acc-node--container]="!isAssignable(node)"
+    [class.acc-node--match]="isDirectMatch(node)"
+    [style.margin-left.px]="node.displayLevel * 28"
+  >
+    <div class="acc-node-row">
+
+      <!-- Expand / collapse chevron -->
+      <div class="acc-chevron-slot">
+        @if (node.children?.length) {
+          <button
+            type="button"
+            class="acc-chevron-btn"
+            [disabled]="isFiltering"
+            (click)="toggleCollapse(node)"
+            [title]="isExpanded(node) ? 'Contraer' : 'Expandir'"
+            [attr.aria-expanded]="isExpanded(node)"
+          >
+            @if (isExpanded(node)) { &#9660; } @else { &#9654; }
+          </button>
+        }
+      </div>
+
+      <!-- Checkbox or spacer -->
+      <div class="acc-check-slot">
+        @if (isAssignable(node)) {
+          <input
+            type="checkbox"
+            class="acc-checkbox"
+            [id]="'mn-' + node.id"
+            [checked]="hasAccess(node.id)"
+            (change)="onMenuToggle(node, $event)"
+          />
+        }
+      </div>
+
+      <!-- Label area -->
+      <label
+        class="acc-node-label"
+        [class.acc-node-label--container]="!isAssignable(node)"
+        [attr.for]="isAssignable(node) ? 'mn-' + node.id : null"
+      >
+        <span class="acc-node-name" [innerHTML]="highlight(node.label)"></span>
+        @if (node.description) {
+          <span class="acc-node-desc" [innerHTML]="highlight(node.description)"></span>
+        }
+        @if (node.route) {
+          <span class="acc-node-route" [innerHTML]="highlight(node.route)"></span>
+        }
+      </label>
+
+      <!-- Access-level select (only when checked and assignable) -->
+      @if (isAssignable(node) && hasAccess(node.id)) {
+        <div class="acc-level-wrap">
+          <label class="acc-level-label" [attr.for]="'lv-' + node.id">Nivel:</label>
+          <select
+            class="acc-level-select"
+            [id]="'lv-' + node.id"
+            [value]="getAccessLevel(node.id)"
+            (change)="updateAccessLevel(node.id, $event)"
+          >
+            @for (lvl of accessLevels; track lvl.key) {
+              <option [value]="lvl.key">{{ lvl.name }}</option>
+            }
+          </select>
+        </div>
+      }
+
+    </div>
+  </div>
+
+  <!-- Render children recursively -->
+  @if (node.children?.length && isExpanded(node)) {
+    @for (child of node.children; track child.id) {
+      <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: child }"></ng-container>
+    }
+  }
+</ng-template>

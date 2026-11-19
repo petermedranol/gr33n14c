@@ -1,0 +1,11 @@
+[Unit]
+Description=Greeniac CCTV retention prune
+Requires=mnt-cctv.mount
+After=mnt-cctv.mount
+
+[Service]
+Type=oneshot
+User=peter
+Group=peter
+EnvironmentFile=-/etc/greeniac/cctv.env
+ExecStart=/home/peter/Gr33n14c/scripts/cctv_prune.sh

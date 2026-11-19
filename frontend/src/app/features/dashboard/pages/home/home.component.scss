@@ -1,0 +1,60 @@
+.home-page {
+  .page-header {
+    margin-bottom: 2rem;
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--g-accent);
+      margin: 0 0 0.25rem;
+    }
+
+    .welcome {
+      color: var(--g-muted);
+      margin: 0;
+
+      strong { color: var(--g-text); }
+    }
+  }
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.25rem;
+}
+
+.card {
+  background: var(--g-surface);
+  border: 1px solid var(--g-surface-2);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+  transition: border-color 0.2s, transform 0.2s;
+
+  &:hover {
+    border-color: rgba(124, 252, 138, 0.25);
+    transform: translateY(-2px);
+  }
+
+  .card-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .card-title {
+    color: var(--g-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.5rem;
+  }
+
+  .card-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--g-text);
+
+    &.card-ok { color: var(--g-accent); }
+  }
+}

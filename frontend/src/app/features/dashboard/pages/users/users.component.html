@@ -1,0 +1,182 @@
+<div class="users-page">
+  <!-- Toolbar -->
+  <div class="page-toolbar">
+    <button class="btn btn-primary" (click)="openCreate()"><lucide-icon name="plus" [size]="16"></lucide-icon> Nuevo usuario</button>
+  </div>
+
+  <!-- Error banner -->
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  <!-- Loading -->
+  @if (loading()) {
+    <div class="loading-row">
+      <span class="loading-dot"></span>
+      <span class="loading-dot"></span>
+      <span class="loading-dot"></span>
+      <span class="loading-text">Cargando usuarios…</span>
+    </div>
+  }
+
+  <!-- Table -->
+  @if (!loading()) {
+    <div class="table-wrapper">
+      <table class="users-table">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Correo</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (user of users(); track user.id) {
+            <tr>
+              <td class="name-cell">
+                <app-user-avatar [userId]="user.id" [name]="user.name" [size]="30" [version]="avatarVersion()" />
+                {{ user.name }}
+              </td>
+              <td class="email-cell">{{ user.email }}</td>
+              <td>
+                @if (user.is_active) {
+                  <span class="badge badge-active">Activo</span>
+                } @else {
+                  <span class="badge badge-inactive">Inactivo</span>
+                }
+              </td>
+              <td class="actions-cell">
+                <button class="btn btn-sm btn-secondary" (click)="openEdit(user)"><lucide-icon name="pencil" [size]="14"></lucide-icon> Editar</button>
+                <button class="btn btn-sm btn-danger" (click)="confirmDelete(user)"><lucide-icon name="trash-2" [size]="14"></lucide-icon> Eliminar</button>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="4" class="empty-row">No hay usuarios registrados.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
+
+<!-- ── Create / Edit modal ── -->
+@if (modalOpen()) {
+  <div class="modal-backdrop" (click)="closeModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ editingUser() ? 'Editar usuario' : 'Nuevo usuario' }}</h3>
+        <button class="modal-close" (click)="closeModal()" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <form class="modal-form" (ngSubmit)="submitForm()" [formGroup]="form" novalidate>
+        <!-- Name -->
+        <div class="form-group">
+          <label for="nombre">Nombre</label>
+          <input
+            id="nombre"
+            type="text"
+            formControlName="name"
+            placeholder="Nombre completo"
+            autocomplete="off"
+            [class.input-error]="isInvalid('name')"
+          />
+          @if (isInvalid('name')) {
+            <span class="field-error">El nombre es obligatorio.</span>
+          }
+        </div>
+
+        <!-- Email -->
+        <div class="form-group">
+          <label for="correo">Correo electrónico</label>
+          <input
+            id="correo"
+            type="email"
+            formControlName="email"
+            placeholder="correo@ejemplo.com"
+            autocomplete="off"
+            [class.input-error]="isInvalid('email')"
+          />
+          @if (isInvalid('email')) {
+            <span class="field-error">Ingresa un correo válido.</span>
+          }
+        </div>
+
+        <!-- Password -->
+        <div class="form-group">
+          <label for="contrasena">
+            Contraseña
+            @if (editingUser()) {
+              <span class="label-hint">(dejar en blanco para no cambiar)</span>
+            }
+          </label>
+          <input
+            id="contrasena"
+            type="password"
+            formControlName="password"
+            [placeholder]="editingUser() ? 'Dejar en blanco para no cambiar' : 'Mínimo 6 caracteres'"
+            autocomplete="new-password"
+            [class.input-error]="isInvalid('password')"
+          />
+          @if (isInvalid('password')) {
+            <span class="field-error">La contraseña debe tener al menos 6 caracteres.</span>
+          }
+        </div>
+
+        <!-- Active toggle -->
+        <div class="form-group form-group-inline">
+          <label class="toggle-label">
+            <input type="checkbox" formControlName="is_active" class="toggle-input" />
+            <span class="toggle-track">
+              <span class="toggle-thumb"></span>
+            </span>
+            <span class="toggle-text">{{ form.value.is_active ? 'Activo' : 'Inactivo' }}</span>
+          </label>
+        </div>
+
+        <!-- Photo (edit only; also shown for new user so photo can be set right after creation) -->
+        <div class="form-group photo-group">
+          <label>Foto de perfil</label>
+          <div class="photo-preview-row">
+            @if (photoPreviewUrl()) {
+              <img class="photo-preview" [src]="photoPreviewUrl()!" alt="Vista previa" />
+            } @else {
+              <app-user-avatar
+                [userId]="editingUser()?.id"
+                [name]="editingUser()?.name ?? ''"
+                [size]="56"
+                [version]="avatarVersion()"
+              />
+            }
+            <div class="photo-actions">
+              <label class="btn btn-secondary btn-sm photo-file-label">
+                Elegir foto
+                <input type="file" accept="image/*" class="photo-file-input" (change)="onPhotoFileChange($event)" />
+              </label>
+              @if (editingUser()) {
+                <button type="button" class="btn btn-danger btn-sm" (click)="removePhoto()">Quitar foto</button>
+              }
+            </div>
+          </div>
+          @if (pendingPhoto()) {
+            <span class="field-hint">{{ pendingPhoto()!.name }} — se subirá al guardar</span>
+          }
+        </div>
+
+        <!-- Form-level error -->
+        @if (formError()) {
+          <div class="alert alert-danger">{{ formError() }}</div>
+        }
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" (click)="closeModal()" [disabled]="saving()"><lucide-icon name="x" [size]="15"></lucide-icon> Cancelar</button>
+          <button type="submit" class="btn btn-primary" [disabled]="saving()">
+            @if (saving()) { Guardando… } @else { <lucide-icon name="save" [size]="15"></lucide-icon> Guardar }
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}

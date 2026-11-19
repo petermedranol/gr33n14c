@@ -1,0 +1,474 @@
+<div class="camera-page">
+
+  <!-- Pestañas: se renderizan en la barra superior (HeaderService) -->
+  <ng-template #headerActions>
+    @for (tab of tabs; track tab.id) {
+      <button
+        class="tab-btn"
+        [class.active]="activeCamera() === tab.id"
+        (click)="selectCamera(tab.id)"
+      >
+        <lucide-icon [name]="tab.icon" [size]="16"></lucide-icon>
+        {{ tab.label }}
+      </button>
+    }
+  </ng-template>
+
+  <!-- ─── Invernadero: en vivo (ancho completo) ─── -->
+  @if (activeCamera() === 'greenhouse') {
+    <div class="camera-container">
+      <img
+        [src]="imgSrc()"
+        alt="Vista en vivo del invernadero"
+        class="camera-feed"
+        (load)="onImgLoad()"
+        (error)="onImgError()"
+      />
+      <div class="camera-overlay">EN VIVO</div>
+      @if (imgError()) {
+        <div class="feed-error">{{ imgError() }}</div>
+      }
+    </div>
+  }
+
+  <!-- ─── Cámaras IP (Garage / Patio Papás): grabaciones (lateral) + vivo/reproductor ─── -->
+  @if (isIpCam(activeCamera())) {
+    <div class="garage-layout">
+
+      <!-- Columna lateral: grabaciones (scroll propio) -->
+      <aside class="recordings-panel sidebar">
+        <div class="recordings-head">
+          <h3 class="recordings-title">Grabaciones</h3>
+          @if (recordings().length > 0) {
+            <div class="rec-summary">
+              <span class="sum-chip" title="Grabaciones del día">{{ recordings().length }}</span>
+              @if (dayEventsCount > 0) {
+                <span class="sum-chip sum-events" title="Detecciones de persona">
+                  <lucide-icon name="user" [size]="12"></lucide-icon> {{ dayEventsCount }}
+                </span>
+              }
+              <span class="sum-chip sum-cloud" title="Respaldadas en la nube">
+                <lucide-icon name="cloud" [size]="12"></lucide-icon> {{ dayBackedCount }}
+              </span>
+            </div>
+          }
+        </div>
+
+        @if (daysError()) {
+          <p class="error-msg">{{ daysError() }}</p>
+        } @else if (availableDays().length === 0) {
+          <p class="muted-msg">Cargando fechas…</p>
+        } @else {
+          <div class="day-selector">
+            <label for="day-select">Fecha:</label>
+            <select id="day-select" [value]="selectedDay()" (change)="onDayChange($event)">
+              @for (day of availableDays(); track day) {
+                <option [value]="day">{{ day }}</option>
+              }
+            </select>
+          </div>
+        }
+
+        @if (recordingsError()) {
+          <p class="error-msg">{{ recordingsError() }}</p>
+        } @else if (recordings().length === 0 && selectedDay()) {
+          <p class="muted-msg">Sin grabaciones para esta fecha.</p>
+        } @else {
+          <ul class="recording-list">
+            @for (rec of recordings(); track rec.name) {
+              <li
+                class="recording-item"
+                [class.active]="selectedRecording()?.name === rec.name"
+                [class.has-event]="eventsOf(rec.name).length > 0"
+                [class.rec-processing]="!rec.web_ready"
+                [attr.title]="rec.web_ready ? null : 'Procesando versión para navegador…'"
+                (click)="selectRecording(rec)"
+              >
+                <span class="rec-time">{{ formatTime(rec.start) }}</span>
+                <span class="rec-events">
+                  @if (eventsOf(rec.name).length > 0) {
+                    <span class="rec-event-badge" title="Detección de persona"><lucide-icon name="user" [size]="13"></lucide-icon> {{ eventsOf(rec.name).length }}</span>
+                  }
+                </span>
+                <span class="rec-right">
+                  @if (rec.backed_up) {
+                    <lucide-icon class="rec-cloud" name="cloud" [size]="14" title="Respaldado en Cloudflare R2"></lucide-icon>
+                  }
+                  <span class="rec-size">{{ formatSizeMB(rec.size) }} MB</span>
+                </span>
+              </li>
+            }
+          </ul>
+        }
+      </aside>
+
+      <!-- Escenario: reproductor si hay grabación seleccionada; si no, el en vivo -->
+      <section class="camera-stage">
+        @if (selectedRecording()) {
+          <div class="video-wrapper">
+            <!-- Reproductor (centro) -->
+            <div class="player-main">
+              @if (selectedRecording()!.web_ready) {
+                <div class="player" #playerEl>
+                  <video
+                    #recVideo
+                    class="video-player"
+                    autoplay
+                    muted
+                    [src]="playSrc(selectedRecording()!.name)"
+                    (loadedmetadata)="onRecLoaded($event)"
+                    (timeupdate)="onRecState($event)"
+                    (play)="onRecState($event)"
+                    (playing)="onRecState($event)"
+                    (pause)="onRecState($event)"
+                    (click)="togglePlay()"
+                    (error)="onVideoError()"
+                  ></video>
+
+                  <!-- Video oculto que genera los thumbnails del hover -->
+                  <video
+                    #previewVideo
+                    class="preview-video"
+                    muted
+                    preload="metadata"
+                    [src]="playSrc(selectedRecording()!.name)"
+                    (seeked)="onPreviewSeeked()"
+                  ></video>
+
+                  <!-- Controles personalizados -->
+                  <div class="player-controls">
+                    <button class="pc-btn" (click)="togglePlay()"
+                      [attr.aria-label]="recPlaying() ? 'Pausar' : 'Reproducir'">
+                      @if (recPlaying()) {
+                        <lucide-icon name="pause" [size]="18"></lucide-icon>
+                      } @else {
+                        <lucide-icon name="play" [size]="18"></lucide-icon>
+                      }
+                    </button>
+                    <span class="pc-time">{{ fmtClock(recCurrent()) }}</span>
+
+                    <div class="pc-seek" #seekEl
+                      (click)="onSeekClick($event)"
+                      (mousemove)="onSeekHover($event)"
+                      (mouseleave)="hidePreview()">
+                      <div class="pc-seek-fill" [style.width.%]="recProgressPct()"></div>
+                      @for (m of detectionMarkers(); track m.file) {
+                        <span class="pc-marker" [style.left.%]="m.pct"
+                          (click)="$event.stopPropagation(); seekSeconds(m.time)"
+                          title="Detección de persona"></span>
+                      }
+                      @for (m of barkMarkers(); track m.ts) {
+                        <span class="pc-marker bark" [style.left.%]="m.pct"
+                          (click)="$event.stopPropagation(); seekSeconds(m.time)"
+                          title="Ladrido"></span>
+                      }
+                      <!-- Preview flotante tipo YouTube -->
+                      <div class="seek-preview" [class.visible]="preview().show"
+                        [style.left.px]="preview().x">
+                        <canvas #previewCanvas width="160" height="90"></canvas>
+                        <span class="seek-preview-time">{{ fmtClock(preview().time) }}</span>
+                      </div>
+                    </div>
+
+                    <span class="pc-time">{{ fmtClock(recDuration()) }}</span>
+                    <button class="pc-btn" (click)="toggleMute()"
+                      [attr.aria-label]="recMuted() ? 'Activar sonido' : 'Silenciar'">
+                      @if (recMuted()) {
+                        <lucide-icon name="volume-x" [size]="18"></lucide-icon>
+                      } @else {
+                        <lucide-icon name="volume-2" [size]="18"></lucide-icon>
+                      }
+                    </button>
+                    <button class="pc-btn" (click)="toggleFullscreen()" aria-label="Pantalla completa">
+                      <lucide-icon name="maximize" [size]="18"></lucide-icon>
+                    </button>
+                  </div>
+
+                  @if (videoError()) {
+                    <div class="video-error">
+                      <p>No se pudo reproducir. Descarga el archivo para verlo en VLC.</p>
+                    </div>
+                  }
+                </div>
+              } @else if (isArchived(selectedRecording()!.start)) {
+                <div class="video-processing">
+                  <lucide-icon name="download" [size]="30"></lucide-icon>
+                  <p>Grabación archivada (+7 días)</p>
+                  <small>Las copias para navegador se guardan 7 días. Descarga el 4K original (arriba) para verla en VLC.</small>
+                </div>
+              } @else {
+                <div class="video-processing">
+                  <div class="spinner"></div>
+                  <p>Procesando la versión para el navegador…</p>
+                  <small>La PC la está convirtiendo a H.264 (toma ~1-2 min tras grabarse). Vuelve en un momento, o descarga el 4K original.</small>
+                </div>
+              }
+            </div>
+
+            <!-- Panel lateral: botones + fotos de detección -->
+            <aside class="player-side">
+              <div class="stage-actions">
+                <a class="btn-download" [href]="downloadSrc(selectedRecording()!.name)" download>
+                  <lucide-icon name="download" [size]="16"></lucide-icon> Descargar (4K original)
+                </a>
+                <button class="tab-btn" (click)="closeRecording()">
+                  <lucide-icon name="x" [size]="16"></lucide-icon> Volver al vivo
+                </button>
+              </div>
+
+              @if (eventsOf(selectedRecording()!.name).length > 0) {
+                <div class="side-label">Detecciones en este video</div>
+                <div class="stage-events">
+                  @for (ev of eventsOf(selectedRecording()!.name); track ev.file) {
+                    <div class="evt-fig">
+                      <img [src]="eventThumb(ev.file)" alt="Detección" loading="lazy"
+                        (click)="openLightbox(eventImg(ev.file))" />
+                      <button class="evt-goto" (click)="goToDetection(ev)"
+                        title="Ir a este momento del video">
+                        <lucide-icon name="play" [size]="11"></lucide-icon> {{ formatTime(ev.start) }}
+                      </button>
+                    </div>
+                  }
+                </div>
+              }
+
+              @if (barksOf(selectedRecording()!.name).length > 0) {
+                <div class="side-label">Ladridos en este video</div>
+                <div class="stage-events">
+                  @for (b of barksOf(selectedRecording()!.name); track b.ts) {
+                    <div class="evt-fig">
+                      @if (b.img) {
+                        <img [src]="barkImg(b.img)" alt="Ladrido" loading="lazy"
+                          (click)="openLightbox(barkImg(b.img))" />
+                      } @else {
+                        <div class="bark-thumb bark-noimg"><lucide-icon name="audio-lines" [size]="18"></lucide-icon></div>
+                      }
+                      <button class="evt-goto bark-goto" (click)="seekToBark(b)"
+                        title="Ir a este ladrido en el video">
+                        <lucide-icon name="audio-lines" [size]="11"></lucide-icon> {{ b.score.toFixed(2) }} · {{ formatTime(b.start) }}
+                      </button>
+                    </div>
+                  }
+                </div>
+              }
+            </aside>
+          </div>
+        } @else {
+          <div class="camera-container stage-fill">
+            @if (garageLoading()) {
+              <div class="camera-placeholder">
+                <div class="spinner"></div>
+                <span>Conectando con la cámara…</span>
+              </div>
+            }
+            <video
+              #garageVideo
+              class="camera-feed"
+              [class.hidden]="garageLoading()"
+              autoplay
+              muted
+              playsinline
+              (playing)="onLivePlaying()"
+            ></video>
+            <div class="camera-overlay">EN VIVO</div>
+            @if (imgError()) {
+              <div class="feed-error">{{ imgError() }}</div>
+            }
+          </div>
+
+          <!-- ── Control PTZ (solo Garage; Patio Papás no tiene PTZ) ── -->
+          @if (activeCamera() === 'garage') {
+          <div class="ptz-panel">
+            <div class="ptz-left">
+              <div class="ptz-dpad">
+                <button class="ptz-btn up" (click)="ptzStep(0, 1, 0)"
+                  aria-label="Arriba"><lucide-icon name="arrow-up" [size]="20"></lucide-icon></button>
+                <button class="ptz-btn left" (click)="ptzStep(-0.6, 0, 0)"
+                  aria-label="Izquierda"><lucide-icon name="arrow-left" [size]="20"></lucide-icon></button>
+                <button class="ptz-btn center" disabled
+                  aria-hidden="true"><lucide-icon name="map-pin" [size]="13"></lucide-icon></button>
+                <button class="ptz-btn right" (click)="ptzStep(0.6, 0, 0)"
+                  aria-label="Derecha"><lucide-icon name="arrow-right" [size]="20"></lucide-icon></button>
+                <button class="ptz-btn down" (click)="ptzStep(0, -1, 0)"
+                  aria-label="Abajo"><lucide-icon name="arrow-down" [size]="20"></lucide-icon></button>
+              </div>
+              <div class="ptz-zoom">
+                <button class="ptz-btn" (click)="ptzStep(0, 0, 0.6)"
+                  title="Acercar"><lucide-icon name="zoom-in" [size]="18"></lucide-icon></button>
+                <button class="ptz-btn" (click)="ptzStep(0, 0, -0.6)"
+                  title="Alejar"><lucide-icon name="zoom-out" [size]="18"></lucide-icon></button>
+              </div>
+            </div>
+
+            <div class="ptz-right">
+              <div class="ptz-step-row">
+                <span class="ptz-label">Paso</span>
+                <input type="range" class="ptz-slider" min="100" max="900" step="50"
+                  [value]="ptzStepMs()" (input)="onStepSizeChange($event)"
+                  title="Qué tanto se mueve la cámara por cada clic" />
+                <span class="ptz-step-val">{{ ptzStepMs() }} ms</span>
+              </div>
+
+              <div class="ptz-presets-head">
+                <span class="ptz-label"><lucide-icon name="map-pin" [size]="14"></lucide-icon> Posiciones</span>
+                <div class="ptz-head-actions">
+                  <button class="ptz-chip-btn" (click)="startSavePreset()" title="Guardar posición actual">
+                    <lucide-icon name="plus" [size]="14"></lucide-icon>
+                  </button>
+                  <button class="ptz-chip-btn" [class.on]="tourActive()" (click)="toggleTour()"
+                    [title]="tourActive() ? 'Detener ronda' : 'Iniciar ronda automática'">
+                    <lucide-icon [name]="tourActive() ? 'square' : 'route'" [size]="14"></lucide-icon> Ronda
+                  </button>
+                </div>
+              </div>
+
+              @if (showPresetInput()) {
+                <div class="ptz-save-row">
+                  <input class="ptz-input" [value]="presetName()"
+                    (input)="presetName.set($any($event.target).value)"
+                    placeholder="Nombre (ej. Entrada)" maxlength="32"
+                    (keyup.enter)="confirmSavePreset()" />
+                  <button class="ptz-chip-btn" (click)="confirmSavePreset()" title="Guardar">
+                    <lucide-icon name="check" [size]="14"></lucide-icon>
+                  </button>
+                  <button class="ptz-chip-btn" (click)="cancelSavePreset()" title="Cancelar">
+                    <lucide-icon name="x" [size]="14"></lucide-icon>
+                  </button>
+                </div>
+              }
+
+              <div class="ptz-presets">
+                @for (p of ptzPresets(); track p.token) {
+                  <span class="ptz-preset" (click)="gotoPreset(p.token)" title="Ir a esta posición">
+                    {{ p.name || ('#' + p.token) }}
+                    <button class="ptz-del" (click)="deletePreset(p.token, $event)" aria-label="Borrar">
+                      <lucide-icon name="x" [size]="12"></lucide-icon>
+                    </button>
+                  </span>
+                }
+                @if (ptzPresets().length === 0 && !ptzError()) {
+                  <span class="ptz-empty">Sin posiciones. Apunta la cámara y pulsa +.</span>
+                }
+              </div>
+
+              @if (ptzError()) {
+                <span class="ptz-err">{{ ptzError() }}</span>
+              }
+            </div>
+          </div>
+          }
+        }
+      </section>
+
+    </div>
+  }
+
+  <!-- ─── Events gallery ─── -->
+  @if (activeCamera() === 'eventos') {
+    <div class="events-panel">
+      <div class="events-header">
+        <h3 class="recordings-title">Detecciones de personas</h3>
+        <button class="tab-btn" (click)="loadEvents()">
+          <lucide-icon name="rotate-cw" [size]="15"></lucide-icon> Actualizar
+        </button>
+      </div>
+
+      @if (eventsError()) {
+        <p class="error-msg">{{ eventsError() }}</p>
+      } @else if (events().length === 0) {
+        <p class="muted-msg">Aún no hay detecciones registradas.</p>
+      } @else {
+        <div class="events-grid">
+          @for (ev of events(); track ev.file) {
+            <div class="event-card">
+              <img class="event-thumb" [src]="eventThumb(ev.file)" alt="Detección" loading="lazy"
+                (click)="openLightbox(eventImg(ev.file))" />
+              <div class="event-meta">
+                <span class="event-cam">{{ camLabel(ev.camera) }}</span>
+                <span class="event-time">{{ formatDateTime(ev.start) }}</span>
+                <span class="event-count"><lucide-icon name="user" [size]="13"></lucide-icon> {{ ev.count }}</span>
+              </div>
+              <button class="event-goto" [disabled]="!ev.web_ready"
+                (click)="openEventInVideo(ev)"
+                [title]="ev.web_ready ? 'Ver este momento en el video' : (isArchived(ev.start) ? 'Grabación archivada (+7 días) — descarga el 4K original' : 'El video aún se está procesando…')">
+                @if (ev.web_ready) {
+                  <lucide-icon name="play" [size]="13"></lucide-icon> Ver en video
+                } @else if (isArchived(ev.start)) {
+                  <lucide-icon name="download" [size]="13"></lucide-icon> Solo 4K
+                } @else {
+                  <lucide-icon name="rotate-cw" [size]="13"></lucide-icon> Procesando…
+                }
+              </button>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ─── Ladridos (detección de audio + calibración) ─── -->
+  @if (activeCamera() === 'ladridos') {
+    <div class="events-panel">
+      <div class="events-header">
+        <h3 class="recordings-title">Ladridos detectados</h3>
+        <button class="tab-btn" (click)="loadBarkEvents()">
+          <lucide-icon name="rotate-cw" [size]="15"></lucide-icon> Actualizar
+        </button>
+      </div>
+
+      <!-- Calibración del umbral de alerta -->
+      <div class="bark-calib">
+        <span class="ptz-label"><lucide-icon name="sliders-horizontal" [size]="14"></lucide-icon> Umbral de alerta</span>
+        <input type="range" class="ptz-slider" min="0.1" max="0.8" step="0.05"
+          [value]="barkThreshold()" (input)="onBarkThresholdChange($event)" />
+        <span class="bark-thr-val">{{ barkThreshold().toFixed(2) }}</span>
+        <span class="bark-hint">{{ barkAboveCount }} de {{ barkEvents().length }} alertarían</span>
+      </div>
+
+      @if (barkError()) {
+        <p class="error-msg">{{ barkError() }}</p>
+      } @else if (barkEvents().length === 0) {
+        <p class="muted-msg">Aún no hay ladridos registrados. Cuando tus perros ladren aparecerán aquí con su intensidad y el audio para escucharlos.</p>
+      } @else {
+        <div class="bark-list">
+          @for (b of barkEvents(); track b.ts) {
+            <div class="bark-card" [class.above]="b.score >= barkThreshold()">
+              @if (b.img) {
+                <img class="bark-thumb" [src]="barkImg(b.img)" alt="snapshot" loading="lazy"
+                  (click)="openLightbox(barkImg(b.img))" />
+              } @else {
+                <div class="bark-thumb bark-noimg"><lucide-icon name="audio-lines" [size]="22"></lucide-icon></div>
+              }
+              <div class="bark-info">
+                <div class="bark-row1">
+                  <span class="bark-score" [class.hot]="b.score >= barkThreshold()">{{ b.score.toFixed(2) }}</span>
+                  @if (b.person) {
+                    <span class="bark-badge alert"><lucide-icon name="user" [size]="12"></lucide-icon> persona</span>
+                  } @else {
+                    <span class="bark-badge amb">ambiente</span>
+                  }
+                  <span class="event-cam">{{ camLabel(b.camera) }}</span>
+                  <span class="bark-time">{{ formatDateTime(b.start) }}</span>
+                  <button class="event-goto bark-goto" (click)="openBarkInVideo(b)"
+                    title="Ver este momento en el video">
+                    <lucide-icon name="play" [size]="12"></lucide-icon> Ver en video
+                  </button>
+                </div>
+                <audio class="bark-audio" controls preload="none" [src]="barkClip(b.file)"></audio>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ─── Lightbox (vista ampliada de una detección) ─── -->
+  @if (lightboxImg()) {
+    <div class="lightbox" (click)="closeLightbox()">
+      <button class="lightbox-close" (click)="closeLightbox()" aria-label="Cerrar">✕</button>
+      <img class="lightbox-img" [src]="lightboxImg()" alt="Detección" (click)="$event.stopPropagation()" />
+    </div>
+  }
+
+</div>

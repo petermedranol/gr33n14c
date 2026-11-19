@@ -1,0 +1,69 @@
+# ───────────────────────── Secrets — NEVER commit ─────────────────────────
+# Real config with credentials/tokens. Templates (*.example) ARE committed.
+.env
+*.env
+!*.env.example
+ai/xmeye/_credentials.py
+
+# ───────────────────────── Python ─────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ───────────────────────── Node / Angular ─────────────────────────
+node_modules/
+dist/
+.angular/
+*.tsbuildinfo
+
+# ───────────────────────── Logs ─────────────────────────
+*.log
+
+# ───────────────────────── ML model weights (large — fetch separately) ─────
+*.pt
+*.pth
+*.onnx
+panns_data/
+
+# ───────────────────────── Native / vendored binaries ─────────────────────────
+# Includes the XMeye NetSDK DLLs (ai/xmeye/*.dll) — 2018 community binaries,
+# re-downloadable from the IPCAS repo; too large/licensing-murky to commit.
+*.dll
+*.so
+*.dylib
+*.exe
+*.pyd
+
+# ───────────────────────── Runtime state & PRIVATE data ─────────────────────────
+ai/state.json
+ai/bark_config.json
+ai/.disabled/
+ai/events/
+ai/live/
+ai/work/
+# Stray camera snapshots / test captures (private footage).
+_cloud321.jpg
+*_snap.jpg
+snap*.jpg
+
+# ───────────────────────── Built frontend (served by the backend) ─────────────
+public/
+backend/public/
+
+# ───────────────────────── OS / editors ─────────────────────────
+# VS Code Local History (also contains its own nested .git — must be excluded).
+.history/
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*~

@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8 -o BatchMode=yes pi@192.168.1.250 \"echo CONECTADO && uname -a && hostname\")",
+      "Bash(ssh-keygen -R 192.168.1.250)",
+      "Bash(ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8 -o BatchMode=yes pi@192.168.1.250 \"echo CONECTADO && uname -a && hostname && echo USER=\\\\$\\(whoami\\)\")",
+      "Bash(ssh -o BatchMode=yes gr33n 'echo \"=== config.txt \\(camara\\) ===\"; grep -iE \"camera|imx|dtoverlay|start_x\" /boot/firmware/config.txt 2>/dev/null || echo \"\\(sin lineas de camara\\)\"; echo; echo \"=== dmesg sensor/unicam ===\"; sudo -n dmesg 2>/dev/null | grep -iE \"imx|unicam|csi|camera|rp1-cfe\" | tail -15 || dmesg 2>/dev/null | grep -iE \"imx|unicam|csi|camera\" | tail -15; echo; echo \"=== i2c / modelo ===\"; cat /proc/device-tree/model | tr -d \"\\\\0\"; echo')",
+      "Bash(ssh -o BatchMode=yes gr33n 'cd /tmp && time rpicam-jpeg -n -t 800 --width 1280 --height 720 -o /tmp/snap.jpg 2>&1 | tail -3; echo \"--- archivo ---\"; ls -la /tmp/snap.jpg; file /tmp/snap.jpg')",
+      "Bash(scp -q \"c:/Users/ingpe/proyectos/Gr33n14c/main.py\" gr33n:~/Gr33n14c/)",
+      "Bash(ssh -o BatchMode=yes gr33n 'cd ~/Gr33n14c && \\(nohup .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload > server.log 2>&1 &\\); sleep 4; echo \"levantado\"; tail -4 server.log')",
+      "Bash(curl -s --max-time 15 -o /tmp/win_snap.jpg -w \"HTTP %{http_code} · %{size_download} bytes · %{time_total}s\\\\n\" http://192.168.1.250:8000/api/camara/foto)",
+      "Read(//tmp/**)",
+      "Read(//c/Users/ingpe/AppData/Local/Temp/**)",
+      "mcp__solidcraft__skill_reference",
+      "mcp__solidcraft__inspect_design",
+      "mcp__solidcraft__batch",
+      "mcp__solidcraft__screenshot",
+      "mcp__solidcraft__set_parameter",
+      "mcp__solidcraft__save",
+      "mcp__solidcraft__list_commands",
+      "Bash(cat)",
+      "Bash(python /tmp/stlbox.py)"
+    ]
+  }
+}

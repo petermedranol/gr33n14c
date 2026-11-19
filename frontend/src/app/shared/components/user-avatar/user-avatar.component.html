@@ -1,0 +1,19 @@
+<span
+  class="ua-circle"
+  [style.width.px]="size"
+  [style.height.px]="size"
+  [style.font-size.px]="size * 0.36"
+  [style.background]="showImg ? 'transparent' : bgColor"
+  aria-hidden="true"
+>
+  @if (showImg) {
+    <img
+      class="ua-img"
+      [src]="photoSrc"
+      [alt]="name"
+      (error)="onImgError()"
+    />
+  } @else {
+    <span class="ua-initials">{{ initials }}</span>
+  }
+</span>

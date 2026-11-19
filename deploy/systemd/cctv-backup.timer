@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Greeniac CCTV R2 backup periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

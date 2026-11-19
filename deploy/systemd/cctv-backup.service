@@ -1,0 +1,12 @@
+[Unit]
+Description=Greeniac CCTV off-site backup to Cloudflare R2
+Requires=mnt-cctv.mount
+After=mnt-cctv.mount network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=peter
+Group=peter
+EnvironmentFile=-/etc/greeniac/cctv.env
+ExecStart=/home/peter/Gr33n14c/scripts/cctv_backup.sh

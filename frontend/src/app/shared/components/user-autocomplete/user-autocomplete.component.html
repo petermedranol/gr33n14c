@@ -1,0 +1,56 @@
+<div class="uac-wrapper">
+  <div class="uac-input-row">
+    <span class="uac-search-icon" aria-hidden="true">&#128269;</span>
+    <input
+      type="text"
+      class="uac-input"
+      [class.uac-input--selected]="selectedUser"
+      [placeholder]="placeholder"
+      [(ngModel)]="query"
+      (input)="onInput()"
+      (keydown)="onKeydown($event)"
+      (focus)="onFocus()"
+      (blur)="onBlur()"
+      autocomplete="off"
+      autocorrect="off"
+      spellcheck="false"
+      role="combobox"
+      aria-autocomplete="list"
+    />
+    @if (loading) {
+      <span class="uac-spinner" aria-hidden="true"></span>
+    }
+    @if (selectedUser) {
+      <button type="button" class="uac-clear" (click)="clear()" title="Limpiar selección" aria-label="Limpiar selección">&#10005;</button>
+    }
+  </div>
+
+  @if (showDropdown && (results.length > 0 || (query.length >= 2 && !loading))) {
+    <div class="uac-dropdown" role="listbox">
+      @if (results.length === 0 && !loading) {
+        <div class="uac-no-results">No se encontraron usuarios</div>
+      }
+      @for (user of results; track user.id; let i = $index) {
+        <button
+          type="button"
+          class="uac-item"
+          [class.uac-item--active]="highlighted === i"
+          role="option"
+          [attr.aria-selected]="highlighted === i"
+          (click)="select(user)"
+          (mouseenter)="highlighted = i"
+        >
+          <app-user-avatar
+            [userId]="user.id"
+            [name]="user.name"
+            [size]="36"
+          />
+          <span class="uac-info">
+            <span class="uac-name">{{ user.name }}</span>
+            <span class="uac-email">{{ user.email }}</span>
+          </span>
+        </button>
+      }
+    </div>
+  }
+</div>

@@ -1,0 +1,28 @@
+<div class="home-page">
+  @if (user) {
+    <p class="welcome">Bienvenido, <strong>{{ user.name }}</strong></p>
+  }
+
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-icon">🌡️</div>
+      <div class="card-title">Temperatura</div>
+      <div class="card-value">— °C</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">💧</div>
+      <div class="card-title">Humedad</div>
+      <div class="card-value">— %</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📸</div>
+      <div class="card-title">Cámara</div>
+      <div class="card-value">Activa</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">⚡</div>
+      <div class="card-title">Sistema</div>
+      <div class="card-value card-ok">En línea</div>
+    </div>
+  </div>
+</div>
